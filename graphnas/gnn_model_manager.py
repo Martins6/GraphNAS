@@ -80,10 +80,15 @@ class CitationGNNManager(object):
         # use optimizer
         optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         try:
+            if self.args.dataset in ["Texas", "Wisconsin", "Cornell"]:
+                need_early_stop = True
+            else:
+                need_early_stop = False
             model, val_acc, test_acc = self.run_model(model, optimizer, self.loss_fn, self.data, self.epochs,
                                                       cuda=self.args.cuda, return_best=True,
                                                       half_stop_score=max(self.reward_manager.get_top_average() * 0.7,
-                                                                          0.4))
+                                                                          0.4),
+                                                      need_early_stop=need_early_stop)
         except RuntimeError as e:
             if "cuda" in str(e) or "CUDA" in str(e):
                 print(e)
@@ -106,8 +111,13 @@ class CitationGNNManager(object):
             if self.args.cuda:
                 model.cuda()
             # use optimizer
+            if self.args.dataset in ["Texas", "Wisconsin", "Cornell"]:
+                need_early_stop = True
+            else:
+                need_early_stop = False
             optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
             model, val_acc = self.run_model(model, optimizer, self.loss_fn, self.data, self.epochs, cuda=self.args.cuda,
+                                            need_early_stop=need_early_stop,
                                             half_stop_score=max(self.reward_manager.get_top_average() * 0.7, 0.4))
         except RuntimeError as e:
             if "cuda" in str(e) or "CUDA" in str(e):
@@ -146,7 +156,7 @@ class CitationGNNManager(object):
         return self.train(actions, format)
 
     @staticmethod
-    def run_model(model, optimizer, loss_fn, data, epochs, early_stop=5, tmp_model_file="geo_citation.pkl",
+    def run_model(model, optimizer, loss_fn, data, epochs, early_stop=100, tmp_model_file="geo_citation.pkl",
                   half_stop_score=0, return_best=False, cuda=True, need_early_stop=False, show_info=False):
 
         dur = []

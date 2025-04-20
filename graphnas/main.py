@@ -163,16 +163,19 @@ def log_experiments_diff_seed(args, seeds, experiment_settings):
 if __name__ == "__main__":
     args = build_args()
 
-
     for dict_data_transf in [
-        {"dataset": "Cora", "normalize_features": True, "sample": True},
-        {"dataset": "CiteSeer", "normalize_features": True, "sample": True},
-        {"dataset": "PubMed", "normalize_features": True, "sample": True},
+        # {"dataset": "Cora", "normalize_features": True, "sample": True},
+        # {"dataset": "CiteSeer", "normalize_features": True, "sample": True},
+        # {"dataset": "PubMed", "normalize_features": True, "sample": True},
+        # {"dataset": "Photo", "normalize_features": True, "sample": True},
+        # {"dataset": "Computers", "normalize_features": True, "sample": True},
+        {"dataset": "Cornell", "normalize_features": True, "sample": True},
+        {"dataset": "Texas", "normalize_features": True, "sample": True},
+        {"dataset": "Wisconsin", "normalize_features": True, "sample": True},
     ]:
         args.normalize_features = dict_data_transf["normalize_features"]
         args.random_node_split = dict_data_transf["sample"]
         args.dataset= dict_data_transf["dataset"]
-
 
         if args.dataset in ["Cora", "CiteSeer"]:
             args.entropy_coeff = 1e-4
@@ -181,7 +184,6 @@ if __name__ == "__main__":
             args.entropy_coeff = 1e-3
             args.lr = 0.01
         
-
 
         try:
             date_time = datetime.now().strftime("%d_%m_%Y__%H_%M_%S")
@@ -192,8 +194,7 @@ if __name__ == "__main__":
             )
             log_experiments_diff_seed(
                 args,
-                # [123, 42, 1, 345678910, 7],
-                [123, 42, 1],
+                [123, 42, 1], # [123, 42, 1, 345678910, 7],
                 dict_data_transf,
             )
             logger.info("Experiment completed successfully.")

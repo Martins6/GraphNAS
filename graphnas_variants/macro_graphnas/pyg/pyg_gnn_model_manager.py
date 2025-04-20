@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
-from torch_geometric.datasets import Planetoid, Coauthor, Amazon
+from torch_geometric.datasets import Planetoid, Coauthor, Amazon, WebKB
 
 from graphnas.gnn_model_manager import CitationGNNManager, evaluate
 from graphnas_variants.macro_graphnas.pyg.pyg_gnn import GraphNet
@@ -34,6 +34,13 @@ def load_data(args):
         dataset = Planetoid(
             path,
             dataset,
+            transform=T.Compose(data_transformations),
+        )
+        data = dataset[0]
+    elif dataset in ["Cornell", "Texas", "Wisconsin"]:
+        dataset = WebKB(
+            root="/tmp/WebKB",
+            name=dataset,
             transform=T.Compose(data_transformations),
         )
         data = dataset[0]
@@ -83,7 +90,7 @@ class GeoCitationManager(CitationGNNManager):
         self.data.to(device)
 
     @staticmethod
-    def run_model(model, optimizer, loss_fn, data, epochs, early_stop=5, tmp_model_file="geo_citation.pkl",
+    def run_model(model, optimizer, loss_fn, data, epochs, early_stop=100, tmp_model_file="geo_citation.pkl",
                   half_stop_score=0, return_best=False, cuda=True, need_early_stop=False, show_info=False):
 
         dur = []
@@ -93,6 +100,15 @@ class GeoCitationManager(CitationGNNManager):
         min_train_loss = float("inf")
         model_val_acc = 0
         print("Number of train datas:", data.train_mask.sum())
+
+        # Early stopping variables
+        if need_early_stop:
+            best_val_acc = 0.0
+            counter = 0
+            best_model_state = {key: val.clone() for key, val in model.state_dict().items()}
+            patience = early_stop
+
+
         for epoch in range(1, epochs + 1):
             model.train()
             t0 = time.time()
@@ -123,6 +139,23 @@ class GeoCitationManager(CitationGNNManager):
                 model_val_acc = val_acc
                 if test_acc > best_performance:
                     best_performance = test_acc
+
+            # Early stopping check based on validation accuracy
+            if need_early_stop:
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    counter = 0
+                    # Save best model state
+                    best_model_state = {key: val.clone() for key, val in model.state_dict().items()}
+                else:
+                    counter += 1
+                    if counter >= patience:
+                        if show_info:
+                            print(f"Early stopping at epoch {epoch}")
+                        # Restore best model
+                        model.load_state_dict(best_model_state)
+                        break
+
             if show_info:
                 print(
                     "Epoch {:05d} | Loss {:.4f} | Time(s) {:.4f} | acc {:.4f} | val_acc {:.4f} | test_acc {:.4f}".format(
@@ -131,6 +164,11 @@ class GeoCitationManager(CitationGNNManager):
                 end_time = time.time()
                 print("Each Epoch Cost Time: %f " % ((end_time - begin_time) / epoch))
         print(f"val_score:{model_val_acc},test_score:{best_performance}")
+
+        # If early stopping was used, ensure we're using the best model
+        if need_early_stop and 'best_model_state' in locals():
+            model.load_state_dict(best_model_state)
+
         if return_best:
             return model, model_val_acc, best_performance
         else:
