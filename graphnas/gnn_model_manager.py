@@ -4,8 +4,8 @@ import time
 import numpy as np
 import torch
 import torch.nn.functional as F
-from dgl import DGLGraph
-from dgl.data import load_data
+# from dgl import DGLGraph
+# from dgl.data import load_data
 
 from graphnas.gnn import GraphNet
 from graphnas.utils.model_utils import EarlyStop, TopAverage, process_action
@@ -123,7 +123,7 @@ class CitationGNNManager(object):
         return reward, val_acc
 
     def record_action_info(self, origin_action, reward, val_acc):
-        with open(self.args.dataset + "_" + self.args.search_mode + self.args.submanager_log_file, "a") as file:
+        with open(".logs/" + self.args.dataset + "_" + self.args.search_mode + self.args.submanager_log_file, "a") as file:
             # with open(f'{self.args.dataset}_{self.args.search_mode}_{self.args.format}_manager_result.txt', "a") as file:
             file.write(str(origin_action))
 
@@ -156,6 +156,13 @@ class CitationGNNManager(object):
         min_train_loss = float("inf")
         model_val_acc = 0
         features, g, labels, mask, val_mask, test_mask, n_edges = CitationGNNManager.prepare_data(data, cuda)
+        
+        # Early stopping variables
+        if need_early_stop:
+            best_val_acc = 0.0
+            counter = 0
+            best_model_state = {key: val.clone() for key, val in model.state_dict().items()}
+            patience = early_stop
 
         for epoch in range(1, epochs + 1):
             model.train()
@@ -186,6 +193,23 @@ class CitationGNNManager(object):
                 model_val_acc = val_acc
                 if test_acc > best_performance:
                     best_performance = test_acc
+            
+            # Early stopping check based on validation accuracy
+            if need_early_stop:
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    counter = 0
+                    # Save best model state
+                    best_model_state = {key: val.clone() for key, val in model.state_dict().items()}
+                else:
+                    counter += 1
+                    if counter >= patience:
+                        if show_info:
+                            print(f"Early stopping at epoch {epoch}")
+                        # Restore best model
+                        model.load_state_dict(best_model_state)
+                        break
+                    
             if show_info:
                 print(
                     "Epoch {:05d} | Loss {:.4f} | Time(s) {:.4f} | acc {:.4f} | val_acc {:.4f} | test_acc {:.4f}".format(
@@ -193,75 +217,16 @@ class CitationGNNManager(object):
 
                 end_time = time.time()
                 print("Each Epoch Cost Time: %f " % ((end_time - begin_time) / epoch))
+        
+        # If early stopping was used, ensure we're using the best model
+        if need_early_stop and 'best_model_state' in locals():
+            model.load_state_dict(best_model_state)
+            
         print(f"val_score:{model_val_acc},test_score:{best_performance}")
         if return_best:
             return model, model_val_acc, best_performance
         else:
             return model, model_val_acc
-
-    # @staticmethod
-    # def run_model(model, optimizer, loss_fn, data, epochs, early_stop=5, tmp_model_file="citation_testing_2.pkl",
-    #               half_stop_score=0, return_best=False, cuda=True, need_early_stop=False):
-    #
-    #     early_stop_manager = EarlyStop(early_stop)
-    #     # initialize graph
-    #     dur = []
-    #     begin_time = time.time()
-    #     features, g, labels, mask, val_mask, test_mask, n_edges = CitationGNNManager.prepare_data(data, cuda)
-    #     saved = False
-    #     best_performance = 0
-    #     for epoch in range(1, epochs + 1):
-    #         should_break = False
-    #         t0 = time.time()
-    #
-    #         model.train()
-    #         logits = model(features, g)
-    #         logits = F.log_softmax(logits, 1)
-    #         loss = loss_fn(logits[mask], labels[mask])
-    #         optimizer.zero_grad()
-    #         loss.backward()
-    #         optimizer.step()
-    #
-    #         model.eval()
-    #         logits = model(features, g)
-    #         logits = F.log_softmax(logits, 1)
-    #         train_acc = evaluate(logits, labels, mask)
-    #         train_loss = float(loss)
-    #         dur.append(time.time() - t0)
-    #
-    #         val_loss = float(loss_fn(logits[val_mask], labels[val_mask]))
-    #         val_acc = evaluate(logits, labels, val_mask)
-    #         test_acc = evaluate(logits, labels, test_mask)
-    #
-    #         print(
-    #             "Epoch {:05d} | Loss {:.4f} | Time(s) {:.4f} | acc {:.4f} | val_acc {:.4f} | test_acc {:.4f}".format(
-    #                 epoch, loss.item(), np.mean(dur), train_acc, val_acc, test_acc))
-    #
-    #         end_time = time.time()
-    #         print("Each Epoch Cost Time: %f " % ((end_time - begin_time) / epoch))
-    #         # print("Test Accuracy {:.4f}".format(acc))
-    #         if early_stop_manager.should_save(train_loss, train_acc, val_loss, val_acc):
-    #             saved = True
-    #             torch.save(model.state_dict(), tmp_model_file)
-    #             if test_acc > best_performance:
-    #                 best_performance = test_acc
-    #         if need_early_stop and early_stop_manager.should_stop(train_loss, train_acc, val_loss, val_acc):
-    #             should_break = True
-    #         if should_break and epoch > 50:
-    #             print("early stop")
-    #             break
-    #         if half_stop_score > 0 and epoch > (epochs / 2) and val_acc < half_stop_score:
-    #             print("half_stop")
-    #             break
-    #     if saved:
-    #         model.load_state_dict(torch.load(tmp_model_file))
-    #     model.eval()
-    #     val_acc = evaluate(model(features, g), labels, val_mask)
-    #     print(evaluate(model(features, g), labels, test_mask))
-    #     if return_best:
-    #         return model, val_acc, best_performance
-    #     else:
-    #         return model, val_acc
 
     @staticmethod
     def prepare_data(data, cuda=True):

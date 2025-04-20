@@ -42,4 +42,4 @@ class SimpleTrainer(Trainer):
 
     @property
     def model_info_filename(self):
-        return f"{self.args.dataset}_{self.args.search_mode}_{self.args.format}_results.txt"
+        return f".logs/{self.args.dataset}_{self.args.search_mode}_{self.args.format}_results.txt"

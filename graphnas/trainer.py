@@ -85,10 +85,10 @@ class Trainer(object):
                                                   search_space=self.search_space,
                                                   cuda=self.args.cuda)
 
-            if self.args.dataset in ["cora", "citeseer", "pubmed"]:
-                # implements based on dgl
-                self.submodel_manager = CitationGNNManager(self.args)
-            if self.args.dataset in ["Cora", "Citeseer", "Pubmed"]:
+            # if self.args.dataset in ["cora", "citeseer", "pubmed"]:
+            #     # implements based on dgl
+            #     self.submodel_manager = CitationGNNManager(self.args)
+            if self.args.dataset in ["Cora", "CiteSeer", "PubMed", "Computers", "Photo"]:
                 # implements based on pyg
                 self.submodel_manager = GeoCitationManager(self.args)
 
@@ -150,9 +150,11 @@ class Trainer(object):
                 self.save_model()
 
         if self.args.derive_finally:
-            best_actions = self.derive()
+            best_actions, best_score = self.derive()
             print("best structure:" + str(best_actions))
+            print("best score:" + str(best_score))
         self.save_model()
+        return best_actions, best_score
 
     def train_shared(self, max_step=50, gnn_list=None):
         """
@@ -302,7 +304,9 @@ class Trainer(object):
         logger.info(f'eval | {gnn} | reward: {reward:8.2f} | scores: {scores:8.2f}')
 
     def derive_from_history(self):
-        with open(self.args.dataset + "_" + self.args.search_mode + self.args.submanager_log_file, "a") as f:
+        path_ = "data/" + self.args.dataset + "_" + self.args.search_mode + self.args.submanager_log_file
+        print(path_)
+        with open(path_, "r") as f:
             lines = f.readlines()
 
         results = []
@@ -316,9 +320,9 @@ class Trainer(object):
         best_score = 0
         for actions in results[:5]:
             actions = eval(actions[0])
-            np.random.seed(123)
-            torch.manual_seed(123)
-            torch.cuda.manual_seed_all(123)
+            np.random.seed(self.args.random_seed)
+            torch.manual_seed(self.args.random_seed)
+            torch.cuda.manual_seed_all(self.args.random_seed)
             val_scores_list = []
             for i in range(20):
                 val_acc, test_acc = self.submodel_manager.evaluate(actions)
@@ -331,16 +335,16 @@ class Trainer(object):
 
         print("best structure:" + str(best_structure))
         # train from scratch to get the final score
-        np.random.seed(123)
-        torch.manual_seed(123)
-        torch.cuda.manual_seed_all(123)
+        np.random.seed(self.args.random_seed)
+        torch.manual_seed(self.args.random_seed)
+        torch.cuda.manual_seed_all(self.args.random_seed)
         test_scores_list = []
         for i in range(100):
             # manager.shuffle_data()
             val_acc, test_acc = self.submodel_manager.evaluate(best_structure)
             test_scores_list.append(test_acc)
         print(f"best results: {best_structure}: {np.mean(test_scores_list):.8f} +/- {np.std(test_scores_list)}")
-        return best_structure
+        return best_structure, best_score
 
     def derive(self, sample_num=None):
         """
@@ -377,15 +381,15 @@ class Trainer(object):
 
     @property
     def model_info_filename(self):
-        return f"{self.args.dataset}_{self.args.search_mode}_{self.args.format}_results.txt"
+        return f".logs/{self.args.dataset}_{self.args.search_mode}_{self.args.format}_results.txt"
 
     @property
     def controller_path(self):
-        return f'{self.args.dataset}/controller_epoch{self.epoch}_step{self.controller_step}.pth'
+        return f'data/{self.args.dataset}/controller_epoch{self.epoch}_step{self.controller_step}.pth'
 
     @property
     def controller_optimizer_path(self):
-        return f'{self.args.dataset}/controller_epoch{self.epoch}_step{self.controller_step}_optimizer.pth'
+        return f'data/{self.args.dataset}/controller_epoch{self.epoch}_step{self.controller_step}_optimizer.pth'
 
     def get_saved_models_info(self):
         paths = glob.glob(os.path.join(self.args.dataset, '*.pth'))

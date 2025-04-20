@@ -10,38 +10,44 @@ from torch_geometric.datasets import Planetoid, Coauthor, Amazon
 from graphnas.gnn_model_manager import CitationGNNManager, evaluate
 from graphnas_variants.macro_graphnas.pyg.pyg_gnn import GraphNet
 from graphnas.utils.label_split import fix_size_split
+from torch_geometric.loader import NeighborLoader
 
 
-def load_data(dataset="Cora", supervised=False, full_data=True):
-    '''
-    support semi-supervised and supervised
-    :param dataset:
-    :param supervised:
-    :return:
-    '''
+def load_data(args):
+    data_transformations = []
+    if args.normalize_features:
+        data_transformations.append(T.NormalizeFeatures())
+    if args.random_node_split:
+        data_transformations.append(
+            T.RandomNodeSplit(split="train_rest", num_val=0.2, num_test=0.2)
+        )
+    dataset= args.dataset
     path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', dataset)
     if dataset in ["CS", "Physics"]:
-        dataset = Coauthor(path, dataset, T.NormalizeFeatures())
-    elif dataset in ["Computers", "Photo"]:
-        dataset = Amazon(path, dataset, T.NormalizeFeatures())
-    elif dataset in ["Cora", "Citeseer", "Pubmed"]:
-        dataset = Planetoid(path, dataset, T.NormalizeFeatures())
-    data = dataset[0]
+        dataset = Coauthor(path, dataset, transform=T.NormalizeFeatures())
+        data = dataset[0]
+    elif dataset in ["Photo"]:
+        dataset = Amazon(path, dataset, transform=T.Compose(data_transformations),)
+        data = dataset[0]
+
+    elif dataset in ["Cora", "CiteSeer", "PubMed"]:
+        dataset = Planetoid(
+            path,
+            dataset,
+            transform=T.Compose(data_transformations),
+        )
+        data = dataset[0]
+    
+    supervised = args.supervised
     if supervised:
-        if full_data:
-            data.train_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
-            data.train_mask[:-1000] = 1
-            data.val_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
-            data.val_mask[data.num_nodes - 1000: data.num_nodes - 500] = 1
-            data.test_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
-            data.test_mask[data.num_nodes - 500:] = 1
-        else:
-            data.train_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
-            data.train_mask[:1000] = 1
-            data.val_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
-            data.val_mask[data.num_nodes - 1000: data.num_nodes - 500] = 1
-            data.test_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
-            data.test_mask[data.num_nodes - 500:] = 1
+        data.train_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
+        data.train_mask[:-1000] = 1
+        data.val_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
+        data.val_mask[data.num_nodes - 1000: data.num_nodes - 500] = 1
+        data.test_mask = torch.zeros(data.num_nodes, dtype=torch.uint8)
+        data.test_mask[data.num_nodes - 500:] = 1
+
+
     return data
 
 
@@ -49,9 +55,9 @@ class GeoCitationManager(CitationGNNManager):
     def __init__(self, args):
         super(GeoCitationManager, self).__init__(args)
         if hasattr(args, "supervised"):
-            self.data = load_data(args.dataset, args.supervised)
+            self.data = load_data(args)
         else:
-            self.data = load_data(args.dataset)
+            self.data = load_data(args)
         self.args.in_feats = self.in_feats = self.data.num_features
         self.args.num_class = self.n_classes = self.data.y.max().item() + 1
         device = torch.device('cuda' if args.cuda else 'cpu')

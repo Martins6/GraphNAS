@@ -1,7 +1,9 @@
 """Entry point."""
-
+from loguru import logger
 import argparse
+from datetime import datetime
 import time
+import json
 
 import torch
 
@@ -53,7 +55,7 @@ def register_default_args(parser):
     parser.add_argument('--derive_from_history', type=bool, default=True)
 
     # child model
-    parser.add_argument("--dataset", type=str, default="Citeseer", required=False,
+    parser.add_argument("--dataset", type=str, default="Cora", required=False,
                         help="The input dataset.")
     parser.add_argument("--epochs", type=int, default=300,
                         help="number of training epochs")
@@ -81,9 +83,6 @@ def main(args):  # pylint:disable=redefined-outer-name
 
     if args.cuda and not torch.cuda.is_available():  # cuda is not available
         args.cuda = False
-    # args.max_epoch = 1
-    # args.controller_max_step = 1
-    # args.derive_num_sample = 1
     torch.manual_seed(args.random_seed)
     if args.cuda:
         torch.cuda.manual_seed(args.random_seed)
@@ -94,13 +93,114 @@ def main(args):  # pylint:disable=redefined-outer-name
 
     if args.mode == 'train':
         print(args)
-        trnr.train()
+        best_actions, best_score = trnr.train()
     elif args.mode == 'derive':
-        trnr.derive()
+        best_actions, best_score = trnr.derive()
     else:
         raise Exception(f"[!] Mode not found: {args.mode}")
+    
+    return best_actions, best_score
+
+
+
+def log_experiments_diff_seed(args, seeds, experiment_settings):
+    logger.info(experiment_settings)
+    logger.info(args)
+
+    # Create initial results dictionary
+    results = {
+        "experiment_settings": experiment_settings,
+        "args": vars(args),  # Convert args namespace to dict
+        "runs": []
+    }
+
+    # Create JSON file with initial structure
+    date_time = datetime.now().strftime("%d_%m_%Y__%H_%M_%S")
+    json_filename = f"adriel_experiment_results_{date_time}.json"
+    with open(json_filename, 'w') as f:
+        json.dump(results, f, indent=4)
+    
+    logger.info(f"Created results file: {json_filename}")
+
+    for seed in seeds:
+        start_time = datetime.now()
+        args.random_seed = seed
+        best_actions, best_score = main(args)
+        end_time = datetime.now()
+        
+        # Calculate duration in seconds
+        duration_seconds = (end_time - start_time).total_seconds()
+        
+        # Log to console
+        logger.info(f"seed: {seed}, best actions: {best_actions}, best score: {best_score}, duration: {duration_seconds:.2f} seconds")
+        
+        # Create run data
+        run_data = {
+            "seed": seed,
+            "best_actions": best_actions,
+            "best_score": best_score,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "duration_seconds": duration_seconds
+        }
+
+        # Read existing results
+        with open(json_filename, 'r') as f:
+            results = json.load(f)
+        
+        # Append new run data
+        results["runs"].append(run_data)
+        
+        # Write updated results back to file
+        with open(json_filename, 'w') as f:
+            json.dump(results, f, indent=4)
+        
+        logger.info(f"Updated results file with seed {seed}")
+
+
 
 
 if __name__ == "__main__":
     args = build_args()
-    main(args)
+
+
+    for dict_data_transf in [
+        {"dataset": "Cora", "normalize_features": True, "sample": True},
+        {"dataset": "CiteSeer", "normalize_features": True, "sample": True},
+        {"dataset": "PubMed", "normalize_features": True, "sample": True},
+    ]:
+        args.normalize_features = dict_data_transf["normalize_features"]
+        args.random_node_split = dict_data_transf["sample"]
+        args.dataset= dict_data_transf["dataset"]
+
+
+        if args.dataset in ["Cora", "CiteSeer"]:
+            args.entropy_coeff = 1e-4
+            args.lr = 0.005
+        if args.dataset == "PubMed":
+            args.entropy_coeff = 1e-3
+            args.lr = 0.01
+        
+
+
+        try:
+            date_time = datetime.now().strftime("%d_%m_%Y__%H_%M_%S")
+            logger_id = logger.add(
+                f".logs/graphnas_experiment_{date_time}.log",
+                format="{time:YYYY-MM-DDTHH:MM:SS} | {level} | {message}",
+                level="INFO",
+            )
+            log_experiments_diff_seed(
+                args,
+                # [123, 42, 1, 345678910, 7],
+                [123, 42, 1],
+                dict_data_transf,
+            )
+            logger.info("Experiment completed successfully.")
+        except Exception as e:
+            print(e)
+            logger.exception(f"Error in experiment: {e}")
+            # log traceback
+        logger.remove(logger_id)
+    
+    # main(args)
