@@ -88,7 +88,7 @@ class Trainer(object):
             # if self.args.dataset in ["cora", "citeseer", "pubmed"]:
             #     # implements based on dgl
             #     self.submodel_manager = CitationGNNManager(self.args)
-            if self.args.dataset in ["Cora", "CiteSeer", "PubMed", "Computers", "Photo"]:
+            if self.args.dataset in ["Cora", "CiteSeer", "PubMed", "Computers", "Photo", "Cornell", "Texas", "Wisconsin"]:
                 # implements based on pyg
                 self.submodel_manager = GeoCitationManager(self.args)
 

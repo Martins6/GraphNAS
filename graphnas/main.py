@@ -116,7 +116,7 @@ def log_experiments_diff_seed(args, seeds, experiment_settings):
 
     # Create JSON file with initial structure
     date_time = datetime.now().strftime("%d_%m_%Y__%H_%M_%S")
-    json_filename = f"adriel_experiment_results_{date_time}.json"
+    json_filename = f"data/adriel_experiment_results_{date_time}.json"
     with open(json_filename, 'w') as f:
         json.dump(results, f, indent=4)
     
